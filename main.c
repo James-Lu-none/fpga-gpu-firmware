@@ -5,12 +5,17 @@
 
 #include <stdint.h>
 
-// MMIO Address Base Registers
-#define GPU_REGS_BASE   0x40000000UL
+// -------------------------------------------------------------------------
+// MMIO Address Base Registers (Must match rtl/gpu_memory_map.vh)
+// -------------------------------------------------------------------------
+#define GPU_REGS_BASE   0x10000000UL // AXI-Lite GPU Hardware Engine
+#define GPU_IRAM_BASE   0x10001000UL // GPU Instruction RAM (4KB)
 #define HDMI_I2C_BASE   0x50000000UL
-#define MAILBOX_BASE    0x00003F00UL // Shared PCIe Direct BRAM Mailbox (256-byte window)
+#define MAILBOX_BASE    0x00003F00UL // Shared PCIe Direct BRAM Mailbox
 
+// -------------------------------------------------------------------------
 // CUDA Task Descriptor Structure (64-Byte Aligned)
+// -------------------------------------------------------------------------
 typedef struct {
     uint32_t magic;         // 0x43554441 ("CUDA")
     uint32_t opcode;        // 1: Add, 2: Mul, 3: Render, 4: SMEM_Write, 5: SMEM_Accumulate
@@ -24,7 +29,9 @@ typedef struct {
     uint32_t reserved[7];   // Padding to 64 bytes
 } cuda_task_descriptor_t;
 
+// -------------------------------------------------------------------------
 // GPU Slave Register & Warp Scheduler Offsets
+// -------------------------------------------------------------------------
 #define REG_DOORBELL    (*(volatile uint32_t*)(GPU_REGS_BASE + 0x00))
 #define REG_INT_STATUS  (*(volatile uint32_t*)(GPU_REGS_BASE + 0x04))
 #define REG_INT_ACK     (*(volatile uint32_t*)(GPU_REGS_BASE + 0x08))
@@ -32,7 +39,8 @@ typedef struct {
 #define REG_GRID_DIM_Y  (*(volatile uint32_t*)(GPU_REGS_BASE + 0x10))
 #define REG_BLOCK_DIM_X (*(volatile uint32_t*)(GPU_REGS_BASE + 0x14))
 #define REG_BLOCK_DIM_Y (*(volatile uint32_t*)(GPU_REGS_BASE + 0x18))
-#define REG_OPCODE      (*(volatile uint32_t*)(GPU_REGS_BASE + 0x1C))
+#define REG_SRC_ADDR    (*(volatile uint32_t*)(GPU_REGS_BASE + 0x20))
+#define REG_DST_ADDR    (*(volatile uint32_t*)(GPU_REGS_BASE + 0x24))
 
 // Simple Delay Loop
 void delay_ms(uint32_t count) {
@@ -57,7 +65,9 @@ void init_hdmi_sii9134(void) {
     hdmi_i2c_write(0x3C, 0x01); // HDMI Output Enable
 }
 
+// -------------------------------------------------------------------------
 // Hardware Interrupt Handler (Triggered by Host PCIe Write to Mailbox 0x3F00)
+// -------------------------------------------------------------------------
 void irq_handler(void) {
     volatile cuda_task_descriptor_t *task = (volatile cuda_task_descriptor_t*)MAILBOX_BASE;
 
@@ -67,17 +77,32 @@ void irq_handler(void) {
         REG_GRID_DIM_Y  = task->grid_dim_y;
         REG_BLOCK_DIM_X = task->block_dim_x;
         REG_BLOCK_DIM_Y = task->block_dim_y;
-        REG_OPCODE      = task->opcode;
+        REG_SRC_ADDR    = (uint32_t)task->dma_src_addr;
+        REG_DST_ADDR    = (uint32_t)task->dma_dst_addr;
 
         // 2. Trigger Hardware Warp Launch Doorbell
         REG_DOORBELL = 1;
 
-        // 3. Mark Task Done in Mailbox
+        // 3. Wait for GPU Compute to Finish
+        while (REG_INT_STATUS == 0) {
+            __asm__ volatile ("nop");
+        }
+
+        // 4. Acknowledge the GPU internal interrupt
+        REG_INT_ACK = 1;
+
+        // 5. Mark Task Done in Mailbox
         task->num_elements = 0x2; // Task Done Status Code
+        
+        // 6. Trigger Host PCIe Interrupt (usr_irq_req) via CPU Trap
+        // Note: The host must reset the RISC-V core before sending the next task.
+        __builtin_trap(); 
     }
 }
 
+// -------------------------------------------------------------------------
 // RISC-V Main Execution Entry
+// -------------------------------------------------------------------------
 int main(void) {
     // 1. Initialize SiI9134 HDMI Display Chip Configuration
     init_hdmi_sii9134();
