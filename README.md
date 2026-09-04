@@ -2,6 +2,14 @@
 
 This repository contains the standalone RISC-V C/Assembly firmware for the **PicoRV32 Command Processor SoC** on the FPGA GPGPU Accelerator.
 
+## Installation of Cross Compiler
+
+```bash
+sudo apt install gcc-riscv64-linux-gnu
+sudo apt install gcc-riscv64-unknown-elf
+
+```
+
 ## Memory Map
 
 - **`0x0000_0000 ~ 0x0000_3EFF`**: Instruction & Data BRAM (16KB Dual-Port)
