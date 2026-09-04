@@ -98,53 +98,83 @@ void *memcpy(void *dest, const void *src, unsigned int n) {
 }
 
 void irq_handler(void) {
-    volatile cuda_task_descriptor_t *task = (volatile cuda_task_descriptor_t*)MAILBOX_BASE;
-
-    if (task->magic == 0x43554441) { // Check "CUDA" Magic
-        // 1. Dispatch Grid & Block Dimensions to Hardware Warp Scheduler
-        REG_GRID_DIM_X  = task->grid_dim_x;
-        REG_GRID_DIM_Y  = task->grid_dim_y;
-        REG_BLOCK_DIM_X = task->block_dim_x;
-        REG_BLOCK_DIM_Y = task->block_dim_y;
-        REG_SRC_ADDR    = (uint32_t)task->dma_src_addr;
-        REG_DST_ADDR    = (uint32_t)task->dma_dst_addr;
-
-        uart_print("[IRQ] Received CUDA Task!\n");
-        uart_print("      Opcode: "); uart_print_hex(task->opcode); uart_print("\n");
-        uart_print("      Grid:   "); uart_print_hex(task->grid_dim_x); uart_print("x"); uart_print_hex(task->grid_dim_y); uart_print("\n");
-        uart_print("      Block:  "); uart_print_hex(task->block_dim_x); uart_print("x"); uart_print_hex(task->block_dim_y); uart_print("\n");
-
-        // 2. Trigger Hardware Warp Launch Doorbell
-        REG_DOORBELL = 1;
-
-        // 3. Wait for GPU Compute to Finish
-        while (REG_INT_STATUS == 0) {
-            __asm__ volatile ("nop");
-        }
-
-        // 4. Acknowledge the GPU internal interrupt
-        REG_INT_ACK = 1;
-
-        // 5. Mark Task Done in Mailbox
-        task->num_elements = 0x2; // Task Done Status Code
-        
-        uart_print("[IRQ] Task Complete. Notifying Host...\n");
-
-        // 6. Trigger Host PCIe Interrupt (usr_irq_req) via CPU Trap
-        // Note: The host must reset the RISC-V core before sending the next task.
-        __builtin_trap(); 
-    }
+    uart_print("[IRQ] Unexpected Interrupt Received. Ignored.\n");
 }
+
+// Ring Buffer Address matching VGPU_RING_OFFSET (0x3E00) in Driver
+#define RING_BUFFER_BASE 0x00003E00UL
+#define QUEUE_SIZE 4
+
+typedef struct {
+    volatile uint32_t head;
+    volatile uint32_t tail;
+    cuda_task_descriptor_t cmds[QUEUE_SIZE];
+} vgpu_ring_buffer_t;
 
 int main(void) {
     // 1. Initialize SiI9134 HDMI Display Chip Configuration
     init_hdmi_sii9134();
 
-    uart_print("\nHello from RISC-V\n");
+    uart_print("\nHello from RISC-V (Non-Blocking Ring Buffer Mode)\n");
 
-    // 2. Command Processor Idle Loop (Hardware IRQ Driven)
+    /*
+     * Asynchronous Ring Buffer (Command Queue)
+     * We map the Ring Buffer directly to our BRAM space. The Host PC updates 
+     * the 'tail' pointer when it adds new tasks. We (PicoRV32) update the 'head' 
+     * pointer when we finish them.
+     */
+    volatile vgpu_ring_buffer_t *ring = (volatile vgpu_ring_buffer_t *)RING_BUFFER_BASE;
+    uint32_t local_head = ring->head;
+
+    // 2. Command Processor Main Polling Loop
     while (1) {
-        __asm__ volatile ("wfi"); // Wait For Interrupt
+        uint32_t tail = ring->tail;
+
+        // Check if there are new tasks from the Host
+        if (local_head != tail) {
+            cuda_task_descriptor_t task = ring->cmds[local_head];
+
+            if (task.magic == 0x43554441) { // Check "CUDA" Magic
+                
+                // Dispatch Grid & Block Dimensions to Hardware Warp Scheduler
+                REG_GRID_DIM_X  = task.grid_dim_x;
+                REG_GRID_DIM_Y  = task.grid_dim_y;
+                REG_BLOCK_DIM_X = task.block_dim_x;
+                REG_BLOCK_DIM_Y = task.block_dim_y;
+                REG_SRC_ADDR    = (uint32_t)task.dma_src_addr;
+                REG_DST_ADDR    = (uint32_t)task.dma_dst_addr;
+
+                uart_print("[Main] Dispatched Task!\n");
+
+                // Trigger Hardware Warp Launch Doorbell
+                REG_DOORBELL = 1;
+
+                /* 
+                 * Wait for GPU Compute to Finish
+                 * Although this is a busy-wait for the GPU engine, it no longer blocks
+                 * the Host CPU! The Host can queue up to 4 tasks in the Ring Buffer while 
+                 * we are waiting here. Once we get multi-engine GPU hardware, we can 
+                 * dispatch without blocking here too.
+                 */
+                while (REG_INT_STATUS == 0) {
+                    __asm__ volatile ("nop");
+                }
+
+                // Acknowledge the GPU internal interrupt
+                REG_INT_ACK = 1;
+                uart_print("[Main] GPU Task Complete.\n");
+            }
+
+            // Move head forward to consume the task
+            local_head = (local_head + 1) % QUEUE_SIZE;
+            
+            /*
+             * Write back to BRAM Ring Buffer
+             * This tells the Host CPU that we have finished the task.
+             * The Host CPU's VGPU_IOC_DOORBELL loop is polling this value!
+             */
+            ring->head = local_head;
+        }
     }
 
     return 0;
