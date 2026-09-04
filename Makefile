@@ -8,7 +8,8 @@ CC             = $(CROSS_COMPILE)gcc
 OBJCOPY        = $(CROSS_COMPILE)objcopy
 OBJDUMP        = $(CROSS_COMPILE)objdump
 
-CFLAGS         = -march=rv32i -mabi=ilp32 -O2 -Wall -nostdlib -ffreestanding -Iinclude
+# Changed optimization to -Os to prevent bloated/unsupported instructions
+CFLAGS         = -march=rv32i -mabi=ilp32 -Os -Wall -nostdlib -ffreestanding -Iinclude
 LDFLAGS        = -T sections.lds -nostdlib
 
 TARGET         = firmware
@@ -30,8 +31,9 @@ $(TARGET).elf: $(OBJS) sections.lds
 $(TARGET).bin: $(TARGET).elf
 	$(OBJCOPY) -O binary $< $@
 
-$(TARGET).hex: $(TARGET).bin
-	hexdump -v -e '1/4 "%08x\n"' $< > $@
+# Uses objcopy for safe Verilog hex layout instead of host-dependent hexdump
+$(TARGET).hex: $(TARGET).elf
+	$(OBJCOPY) -O verilog --verilog-data-width=4 $< $@
 
 $(TARGET).lst: $(TARGET).elf
 	$(OBJDUMP) -d $< > $@
