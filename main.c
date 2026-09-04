@@ -32,13 +32,14 @@ typedef struct {
 #define REG_DST_ADDR    (*(volatile uint32_t*)(GPU_REGS_BASE + 0x24))
 
 // UART Helper Functions
-#define UART_TX         (*(volatile uint32_t*)(UART_BASE + 0x00))
-#define UART_RX         (*(volatile uint32_t*)(UART_BASE + 0x04))
+#define UART_RX         (*(volatile uint32_t*)(UART_BASE + 0x00))
+#define UART_TX         (*(volatile uint32_t*)(UART_BASE + 0x04))
 #define UART_STATUS     (*(volatile uint32_t*)(UART_BASE + 0x08))
+#define UART_CTRL       (*(volatile uint32_t*)(UART_BASE + 0x0C))
 
 void uart_putc(char c) {
-    // Wait until TX is not busy (Bit 0 of status)
-    while (UART_STATUS & 0x01) {
+    // Wait until TX FIFO is not full (Bit 3 of status is 0)
+    while (UART_STATUS & 0x08) {
         __asm__ volatile ("nop");
     }
     UART_TX = c;
