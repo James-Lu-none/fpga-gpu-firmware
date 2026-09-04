@@ -82,6 +82,21 @@ void init_hdmi_sii9134(void) {
     hdmi_i2c_write(0x3C, 0x01); // HDMI Output Enable
 }
 
+/*
+ * Custom memcpy for Baremetal RISC-V Firmware
+ * The GCC compiler often implicitly calls memcpy for struct assignments 
+ * (like task = ring->cmds[local_head]). Since we compile with -nostdlib, 
+ * we must provide our own basic implementation.
+ */
+void *memcpy(void *dest, const void *src, unsigned int n) {
+    char *d = (char *)dest;
+    const char *s = (const char *)src;
+    while (n--) {
+        *d++ = *s++;
+    }
+    return dest;
+}
+
 void irq_handler(void) {
     volatile cuda_task_descriptor_t *task = (volatile cuda_task_descriptor_t*)MAILBOX_BASE;
 
