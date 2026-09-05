@@ -8,7 +8,7 @@
 #include <sys/mman.h>
 
 #define BRAM_USABLE_SIZE 0x1FFFF // 128 KB
-#define BRAM_CPU_RESET_OFFSET 0x20000
+#define BRAM_CPU_RESET_OFFSET 0x1FFF0
 
 int main(int argc, char **argv) {
     const char *fw_path = "firmware.bin";
@@ -76,9 +76,20 @@ int main(int argc, char **argv) {
     printf("Asserted CPU soft reset.\n");
     sleep(1);
 
-    // 4. Write Firmware to BRAM
-    // Write as 32-bit words
+    // 4. Clear BRAM to 0x00
+    // We must use 32-bit single writes with mfence because XDMA AXI-Lite doesn't support burst!
+    printf("Clearing 128KB BRAM to 0x00...\n");
     volatile uint32_t *bram_words = (volatile uint32_t *)virt_addr;
+    size_t total_words = (BRAM_USABLE_SIZE + 1) / 4;
+    for (size_t i = 0; i < total_words; i++) {
+        bram_words[i] = 0;
+        __asm__ volatile("mfence" ::: "memory");
+        (void)bram_words[i];
+    }
+    printf("BRAM cleared.\n");
+
+    // 5. Write Firmware to BRAM
+    // Write as 32-bit words
     uint32_t *fw_words = (uint32_t *)fw_buf;
     size_t num_words = (fw_size + 3) / 4; 
 

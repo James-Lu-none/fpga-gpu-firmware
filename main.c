@@ -1,11 +1,14 @@
 #include <stdint.h>
 
-// MMIO Address Base Registers (Must match rtl/gpu_memory_map.vh)
+// Address Bases (Must match rtl/common/address.vh)
+#define BRAM_RING_BUFFER_BASE 0x0001E000UL
+#define BRAM_CPU_RESET_BASE   0x0001FFF0UL
 #define GPU_REGS_BASE   0x10000000UL // AXI-Lite GPU Hardware Engine
 #define GPU_IRAM_BASE   0x10001000UL // GPU Instruction RAM (4KB)
-#define HDMI_I2C_BASE   0x50000000UL
-#define MAILBOX_BASE    0x00003F00UL // Shared PCIe Direct BRAM Mailbox
 #define UART_BASE       0x20000000UL // Simple AXI-Lite UART
+#define HDMI_I2C_BASE   0x50000000UL
+
+#define QUEUE_SIZE 512
 
 typedef struct {
     uint32_t magic;         // 0x43554441 ("CUDA")
@@ -100,10 +103,6 @@ void *memcpy(void *dest, const void *src, unsigned int n) {
 void irq_handler(void) {
     uart_print("[IRQ] Unexpected Interrupt Received. Ignored.\n");
 }
-
-// Ring Buffer Address matching VGPU_RING_OFFSET (0x3E00) in Driver
-#define RING_BUFFER_BASE 0x00003E00UL
-#define QUEUE_SIZE 4
 
 typedef struct {
     volatile uint32_t head;
