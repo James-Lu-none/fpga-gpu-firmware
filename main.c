@@ -2,7 +2,7 @@
 
 // Address Bases (Must match rtl/common/address.vh)
 #define RING_BUFFER_BASE 0x0001E000UL
-#define IRQ_BASE        0x0001FFF0UL
+#define IRQ_BASE        0x0001FFE0UL
 #define GPU_REGS_BASE   0x10000000UL // AXI-Lite GPU Hardware Engine
 #define GPU_IRAM_BASE   0x10001000UL // GPU Instruction RAM (4KB)
 #define UART_BASE       0x20000000UL // Simple AXI-Lite UART
@@ -62,10 +62,12 @@ void uart_print_hex(uint32_t val) {
     }
 }
 
-// Simple Delay Loop
+// Simple Delay Loop (~1ms per count at 125MHz)
 void delay_ms(uint32_t count) {
-    for (volatile uint32_t i = 0; i < count * 2000; i++) {
-        __asm__ volatile ("nop");
+    while (count--) {
+        for (volatile uint32_t i = 0; i < 25000; i++) {
+            __asm__ volatile ("nop");
+        }
     }
 }
 
