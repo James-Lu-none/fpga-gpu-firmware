@@ -8,11 +8,11 @@
 #include <sys/mman.h>
 
 #define BRAM_USABLE_SIZE 0x1FFFF // 128 KB
-#define BRAM_CPU_RESET_OFFSET 0x3F10
+#define BRAM_CPU_RESET_OFFSET 0x20000
 
 int main(int argc, char **argv) {
     const char *fw_path = "firmware.bin";
-    uint32_t bar0_addr = 0xFEA50000; // BAR0 Physical Address
+    uint32_t bar0_addr = 0xa0a10000; // BAR0 Physical Address
 
     // 1. Read firmware.bin
     FILE *f = fopen(fw_path, "rb");
@@ -74,6 +74,7 @@ int main(int argc, char **argv) {
     *cpu_reset_reg = 0;
     __asm__ volatile("mfence" ::: "memory");
     printf("Asserted CPU soft reset.\n");
+    sleep(1);
 
     // 4. Write Firmware to BRAM
     // Write as 32-bit words
@@ -119,7 +120,7 @@ int main(int argc, char **argv) {
 
     if (!mismatch) {
         printf("Byte-by-byte verification passed! %d/%ld bytes matched.\n", matches, fw_size);
-        
+        sleep(1);
         // Release cpu_soft_rst_n to boot firmware
         *cpu_reset_reg = 1;
         __asm__ volatile("mfence" ::: "memory");
