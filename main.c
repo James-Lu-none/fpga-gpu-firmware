@@ -1,8 +1,8 @@
 #include <stdint.h>
 
 // Address Bases (Must match rtl/common/address.vh)
-#define BRAM_RING_BUFFER_BASE 0x0001E000UL
-#define BRAM_CPU_RESET_BASE   0x0001FFF0UL
+#define RING_BUFFER_BASE 0x0001E000UL
+#define IRQ_BASE        0x0001FFF0UL
 #define GPU_REGS_BASE   0x10000000UL // AXI-Lite GPU Hardware Engine
 #define GPU_IRAM_BASE   0x10001000UL // GPU Instruction RAM (4KB)
 #define UART_BASE       0x20000000UL // Simple AXI-Lite UART
@@ -101,7 +101,9 @@ void *memcpy(void *dest, const void *src, unsigned int n) {
 }
 
 void irq_handler(void) {
-    uart_print("[IRQ] Unexpected Interrupt Received. Ignored.\n");
+    volatile uint32_t *irq = (volatile uint32_t*)IRQ_BASE;
+    *irq &= ~(1 << 0);
+    uart_print("[IRQ] Interrupt Received.\n");
 }
 
 typedef struct {
