@@ -8,6 +8,7 @@
 #include <sys/mman.h>
 
 #define BRAM_USABLE_SIZE 0x1FFFF // 128 KB
+#define BRAM_CPU_RESET_OFFSET 0x3F10
 
 int main(int argc, char **argv) {
     const char *fw_path = "firmware.bin";
@@ -68,7 +69,13 @@ int main(int argc, char **argv) {
 
     void *virt_addr = (uint8_t *)map_base + (target & (map_size - 1));
 
-    // 3. Write Firmware to BRAM
+    // 3. Assert CPU Soft Reset before loading firmware
+    volatile uint32_t *cpu_reset_reg = (volatile uint32_t *)((uint8_t *)virt_addr + BRAM_CPU_RESET_OFFSET);
+    *cpu_reset_reg = 1;
+    __asm__ volatile("mfence" ::: "memory");
+    printf("Asserted CPU soft reset.\n");
+
+    // 4. Write Firmware to BRAM
     // Write as 32-bit words
     volatile uint32_t *bram_words = (volatile uint32_t *)virt_addr;
     uint32_t *fw_words = (uint32_t *)fw_buf;
@@ -109,6 +116,11 @@ int main(int argc, char **argv) {
 
     if (!mismatch) {
         printf("Byte-by-byte verification passed! Firmware is successfully loaded into FPGA BRAM.\n");
+        
+        // Release CPU Soft Reset to boot firmware
+        *cpu_reset_reg = 0;
+        __asm__ volatile("mfence" ::: "memory");
+        printf("Released CPU soft reset. RISC-V is now running!\n");
     }
 
     // Cleanup
