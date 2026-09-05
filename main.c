@@ -113,7 +113,7 @@ typedef struct {
 
 int main(void) {
     // 1. Initialize SiI9134 HDMI Display Chip Configuration
-    init_hdmi_sii9134();
+    // init_hdmi_sii9134(); // [WARNING] 0x50000000 is not mapped in AXI Crossbar yet! This will cause a Bus Error (DECERR) and trap the CPU!
 
     uart_print("\nHello from RISC-V (Non-Blocking Ring Buffer Mode)\n");
 
@@ -174,6 +174,10 @@ int main(void) {
              * The Host CPU's VGPU_IOC_DOORBELL loop is polling this value!
              */
             ring->head = local_head;
+        } else {
+            // No new tasks, print a heartbeat every ~1 second so we can see UART working
+            uart_print("RISC-V Heartbeat...\r\n");
+            delay_ms(1000);
         }
     }
 
