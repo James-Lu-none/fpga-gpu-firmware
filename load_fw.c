@@ -9,6 +9,7 @@
 
 #define BRAM_USABLE_SIZE 0x1FFFF // 128 KB
 #define BRAM_CPU_RESET_OFFSET 0x1FFF0
+#define BRAM_IRQ_OFFSET       0x1FFE0
 
 int main(int argc, char **argv) {
     const char *fw_path = "firmware.bin";
@@ -136,7 +137,33 @@ int main(int argc, char **argv) {
         // Release cpu_soft_rst_n to boot firmware
         *cpu_reset_reg = 1;
         __asm__ volatile("mfence" ::: "memory");
-        printf("Released CPU soft reset.\n");
+        printf("CPU soft reset released. Firmware is booting...\n");
+        sleep(1);
+        
+
+        volatile uint32_t *irq_reg = (volatile uint32_t *)((uint8_t *)virt_addr + BRAM_IRQ_OFFSET);
+        printf("\nStarting PicoRV32 Liveness Test...\n");
+        
+        for (int i = 0; i < 3; i++) {
+            printf("Host: Sending IRQ ping %d...\n", i);
+            *irq_reg = 1; // Trigger AXI IRQ Sniffer and set bit 0 in BRAM
+            __asm__ volatile("mfence" ::: "memory");
+            
+            int timeout = 100;
+            while ((*irq_reg & 1) != 0 && timeout > 0) {
+                usleep(10000);
+                timeout--;
+            }
+            
+            if (timeout == 0) {
+                printf("TIMEOUT! CPU did not respond to IRQ %d.\n", i);
+                break;
+            } else {
+                printf("SUCCESS! CPU received IRQ and cleared the flag!\n");
+            }
+            sleep(1);
+        }
+        printf("--- Liveness Test Finished ---\n");
     } else {
         printf("Byte-by-byte verification failed! %d/%ld bytes matched, %d bytes mismatched.\n", matches, fw_size, mismatch);
     }
