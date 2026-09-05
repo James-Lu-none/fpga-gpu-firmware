@@ -103,24 +103,29 @@ int main(int argc, char **argv) {
     // 4. Byte-by-Byte Verification
     volatile uint8_t *bram_bytes = (volatile uint8_t *)virt_addr;
     int mismatch = 0;
+    int matches = 0;
     for (size_t i = 0; i < fw_size; i++) {
-        if (bram_bytes[i] != fw_buf[i]) {
-            printf("Verification failed at byte offset 0x%zx: expected 0x%02X, got 0x%02X\n", i, fw_buf[i], bram_bytes[i]);
+        // dummy read to get the data out
+        uint8_t val = bram_bytes[i];
+        if (val != fw_buf[i]) {
+            printf("Verification failed at byte offset 0x%zx: expected 0x%02X, got 0x%02X\n", i, fw_buf[i], val);
             mismatch++;
-            if (mismatch > 30) {
-                printf("Too many mismatches. Stopping verification.\n");
-                break;
-            }
+        }
+        else {
+            matches++;
         }
     }
 
+
     if (!mismatch) {
-        printf("Byte-by-byte verification passed! Firmware is successfully loaded into FPGA BRAM.\n");
+        printf("Byte-by-byte verification passed! %d/%ld bytes matched.\n", matches, fw_size);
         
         // Release CPU Soft Reset to boot firmware
         *cpu_reset_reg = 0;
         __asm__ volatile("mfence" ::: "memory");
-        printf("Released CPU soft reset. RISC-V is now running!\n");
+        printf("Released CPU soft reset.\n");
+    } else {
+        printf("Byte-by-byte verification failed! %d/%ld bytes matched, %d bytes mismatched.\n", matches, fw_size, mismatch);
     }
 
     // Cleanup
