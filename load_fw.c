@@ -71,7 +71,7 @@ int main(int argc, char **argv) {
 
     // 3. Assert CPU Soft Reset before loading firmware
     volatile uint32_t *cpu_reset_reg = (volatile uint32_t *)((uint8_t *)virt_addr + BRAM_CPU_RESET_OFFSET);
-    *cpu_reset_reg = 1;
+    *cpu_reset_reg = 0;
     __asm__ volatile("mfence" ::: "memory");
     printf("Asserted CPU soft reset.\n");
 
