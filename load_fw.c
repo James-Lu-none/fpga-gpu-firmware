@@ -120,8 +120,8 @@ int main(int argc, char **argv) {
     if (!mismatch) {
         printf("Byte-by-byte verification passed! %d/%ld bytes matched.\n", matches, fw_size);
         
-        // Release CPU Soft Reset to boot firmware
-        *cpu_reset_reg = 0;
+        // Release cpu_soft_rst_n to boot firmware
+        *cpu_reset_reg = 1;
         __asm__ volatile("mfence" ::: "memory");
         printf("Released CPU soft reset.\n");
     } else {
