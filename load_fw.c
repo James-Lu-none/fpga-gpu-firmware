@@ -59,7 +59,8 @@ int main(int argc, char **argv) {
 
     size_t map_size = 0x20000; // 128KB PCIe BAR size
     off_t target = bar0_addr;
-    void *map_base = mmap(0, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, mem_fd, target & ~(map_size - 1));
+    size_t page_size = sysconf(_SC_PAGE_SIZE);
+    void *map_base = mmap(0, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, mem_fd, target & ~(page_size - 1));
     if (map_base == (void *) -1) {
         perror("mmap failed");
         close(mem_fd);
@@ -67,7 +68,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    void *virt_addr = (uint8_t *)map_base + (target & (map_size - 1));
+    void *virt_addr = (uint8_t *)map_base + (target & (page_size - 1));
 
     // 3. Assert CPU Soft Reset before loading firmware
     volatile uint32_t *cpu_reset_reg = (volatile uint32_t *)((uint8_t *)virt_addr + BRAM_CPU_RESET_OFFSET);
