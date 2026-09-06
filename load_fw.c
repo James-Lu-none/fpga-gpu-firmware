@@ -14,7 +14,7 @@
 
 int main(int argc, char **argv) {
     const char *fw_path = "firmware.bin";
-    uint32_t bar0_addr = 0xa0a10000; // BAR0 Physical Address
+    uint32_t bar0_addr = 0xa0a00000; // BAR0 Physical Address
 
     // 1. Read firmware.bin
     FILE *f = fopen(fw_path, "rb");
