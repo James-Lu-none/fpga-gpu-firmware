@@ -1,7 +1,10 @@
 # =========================================================================
 # PicoRV32 RISC-V Startup Assembly & Hardware IRQ Vector Entry
 # Target: RISC-V RV32I Architecture
+# Uses official picorv32 custom_ops.S instruction macros
 # =========================================================================
+
+#include "custom_ops.S"
 
 .section .text.start
 .global _start
@@ -50,17 +53,17 @@ irq_entry:
     lw   x17, 44(sp)
     addi sp, sp, 64
 
-    # PicoRV32 retirq custom instruction opcode (0x0200000b)
-    .word 0x0200000b
+    # PicoRV32 retirq official custom instruction macro
+    picorv32_retirq_insn()
 
 real_start:
     # Initialize Stack Pointer
     la   sp, _stack_top
 
     # Unmask Hardware Interrupt 0 (irq[0] - Mailbox PCIe Doorbell)
-    # PicoRV32 custom instruction: qR = maskirq(qA) -> set bit 0 to 0 (enable irq0)
+    # PicoRV32 official custom instruction: qR = maskirq(qA) -> set bit 0 to 0 (enable irq0)
     li   t0, 0xFFFFFFFE
-    .word 0x060282B3 # maskirq t0, t0
+    picorv32_maskirq_insn(t0, t0)
 
     # Jump to C main()
     jal  main

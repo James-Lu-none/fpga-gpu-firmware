@@ -15,10 +15,13 @@ LDFLAGS        = -T sections.lds -nostdlib
 
 TARGET         = firmware
 SRCS_C         = main.c
-SRCS_ASM       = start.s
-OBJS           = $(SRCS_ASM:.s=.o) $(SRCS_C:.c=.o)
+SRCS_ASM       = start.S
+OBJS           = $(SRCS_ASM:.S=.o) $(SRCS_C:.c=.o)
 
 all: $(TARGET).bin $(TARGET).hex $(TARGET).lst load_fw
+
+%.o: %.S
+	$(CC) $(CFLAGS) -c $< -o $@
 
 %.o: %.s
 	$(CC) $(CFLAGS) -c $< -o $@
