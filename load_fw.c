@@ -8,8 +8,9 @@
 #include <sys/mman.h>
 
 #define BRAM_USABLE_SIZE 0x1FFFF // 128 KB
-#define BRAM_CPU_RESET_OFFSET 0x1FFF0
-#define BRAM_IRQ_OFFSET       0x1FFE0
+#define CTRL_REG_BASE    0x20000
+#define CTRL_REG_IRQ_OFFSET       (CTRL_REG_BASE + 0x00)
+#define CTRL_REG_CPU_RESET_OFFSET (CTRL_REG_BASE + 0x04)
 
 int main(int argc, char **argv) {
     const char *fw_path = "firmware.bin";
@@ -58,7 +59,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    size_t map_size = 0x20000; // 128KB PCIe BAR size
+    size_t map_size = 0x30000; // 192KB PCIe BAR size to cover BRAM (128KB) and Ctrl Regs (0x20000)
     off_t target = bar0_addr;
     size_t page_size = sysconf(_SC_PAGE_SIZE);
     void *map_base = mmap(0, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, mem_fd, target & ~(page_size - 1));
@@ -72,7 +73,7 @@ int main(int argc, char **argv) {
     void *virt_addr = (uint8_t *)map_base + (target & (page_size - 1));
 
     // 3. Assert CPU Soft Reset before loading firmware
-    volatile uint32_t *cpu_reset_reg = (volatile uint32_t *)((uint8_t *)virt_addr + BRAM_CPU_RESET_OFFSET);
+    volatile uint32_t *cpu_reset_reg = (volatile uint32_t *)((uint8_t *)virt_addr + CTRL_REG_CPU_RESET_OFFSET);
     *cpu_reset_reg = 0;
     __asm__ volatile("mfence" ::: "memory");
     printf("Asserted CPU soft reset.\n");
@@ -141,7 +142,7 @@ int main(int argc, char **argv) {
         sleep(1);
         
 
-        volatile uint32_t *irq_reg = (volatile uint32_t *)((uint8_t *)virt_addr + BRAM_IRQ_OFFSET);
+        volatile uint32_t *irq_reg = (volatile uint32_t *)((uint8_t *)virt_addr + CTRL_REG_IRQ_OFFSET);
         printf("\nStarting PicoRV32 Liveness Test...\n");
         
         for (int i = 0; i < 3; i++) {

@@ -1,8 +1,8 @@
 #include <stdint.h>
 
 // Address Bases (Must match rtl/common/address.vh)
-#define RING_BUFFER_BASE 0x0001E000UL
-#define IRQ_BASE        0x0001FFE0UL
+#define RING_BUFFER_BASE 0x00018000UL
+#define IRQ_BASE        0x00020000UL // mapped to ctrl_axi
 #define GPU_REGS_BASE   0x10000000UL // AXI-Lite GPU Hardware Engine
 #define GPU_IRAM_BASE   0x10001000UL // GPU Instruction RAM (4KB)
 #define UART_BASE       0x20000000UL // Simple AXI-Lite UART
