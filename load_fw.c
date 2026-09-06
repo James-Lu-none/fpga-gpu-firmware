@@ -76,6 +76,9 @@ int main(int argc, char **argv) {
     volatile uint32_t *cpu_reset_reg = (volatile uint32_t *)((uint8_t *)virt_addr + CTRL_REG_CPU_RESET_OFFSET);
     *cpu_reset_reg = 0;
     __asm__ volatile("mfence" ::: "memory");
+    if (*cpu_reset_reg != 0) {
+        printf("Error: Failed to assert CPU soft reset! Read back: %d\n", *cpu_reset_reg);
+    }
     printf("Asserted CPU soft reset.\n");
     sleep(1);
 
@@ -138,6 +141,9 @@ int main(int argc, char **argv) {
         // Release cpu_soft_rst_n to boot firmware
         *cpu_reset_reg = 1;
         __asm__ volatile("mfence" ::: "memory");
+        if (*cpu_reset_reg != 1) {
+            printf("Error: Failed to release CPU soft reset! Read back: %d\n", *cpu_reset_reg);
+        }
         printf("CPU soft reset released. Firmware is booting...\n");
         sleep(1);
         
@@ -149,6 +155,9 @@ int main(int argc, char **argv) {
             printf("Host: Sending IRQ ping %d...\n", i);
             *irq_reg = 1; // Trigger AXI IRQ Sniffer and set bit 0 in BRAM
             __asm__ volatile("mfence" ::: "memory");
+            if (*irq_reg != 1) {
+                printf("Warning: IRQ register read back %d immediately after write.\n", *irq_reg);
+            }
             
             int timeout = 100;
             while ((*irq_reg & 1) != 0 && timeout > 0) {
