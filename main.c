@@ -179,8 +179,8 @@ int main(void) {
             ring->head = local_head;
         } else {
             // No new tasks, print a heartbeat every ~1 second so we can see UART working
-            uart_print("RISC-V Heartbeat...\r\n");
-            delay_ms(1000);
+            uart_print("[Main] RISC-V Heartbeat\n");
+            delay_ms(100);
         }
     }
 
