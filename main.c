@@ -20,8 +20,8 @@ typedef struct {
     uint64_t dma_src_addr;  // PCIe Host DMA Source Address
     uint64_t dma_dst_addr;  // PCIe Host DMA Destination Address
     uint32_t num_elements;  // Vector Element Count
-    uint32_t reserved[7];   // Padding to 64 bytes
-} cuda_task_descriptor_t;
+    uint32_t reserved[5];   // 20 bytes padding, exactly 64 bytes total
+} __attribute__((packed, aligned(64))) cuda_task_descriptor_t;
 
 // GPU Slave Register & Warp Scheduler Offsets
 #define REG_DOORBELL    (*(volatile uint32_t*)(GPU_REGS_BASE + 0x00))
@@ -111,6 +111,7 @@ void irq_handler(void) {
 typedef struct {
     volatile uint32_t head;
     volatile uint32_t tail;
+    uint32_t reserved[14]; // 56 bytes padding to align cmds to 64 bytes
     cuda_task_descriptor_t cmds[QUEUE_SIZE];
 } vgpu_ring_buffer_t;
 
