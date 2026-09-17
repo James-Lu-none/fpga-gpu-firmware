@@ -132,7 +132,7 @@ typedef struct {
     volatile uint32_t tail;
     uint32_t reserved[14]; // 56 bytes padding to align cmds to 64 bytes
     cuda_task_descriptor_t cmds[QUEUE_SIZE];
-} vgpu_ring_buffer_t;
+} fpgagpu_ring_buffer_t;
 
 int main(void) {
     // 1. Initialize SiI9134 HDMI Display Chip Configuration
@@ -146,7 +146,7 @@ int main(void) {
      * the 'tail' pointer when it adds new tasks. We (PicoRV32) update the 'head' 
      * pointer when we finish them.
      */
-    volatile vgpu_ring_buffer_t *ring = (volatile vgpu_ring_buffer_t *)RING_BUFFER_BASE;
+    volatile fpgagpu_ring_buffer_t *ring = (volatile fpgagpu_ring_buffer_t *)RING_BUFFER_BASE;
     uint32_t local_head = ring->head;
 
     // 2. Initialize GPU I-RAM with default OP_EXIT (0xFF000000) so unprogrammed kernels exit safely
@@ -172,7 +172,7 @@ int main(void) {
 
             if (task.magic == FPGAGPU_MAGIC_OCL) {
                 
-                if (task.opcode == 0x10) { // VGPU_OPCODE_LOAD_KERNEL
+                if (task.opcode == 0x10) { // fpgagpu_OPCODE_LOAD_KERNEL
                     volatile uint32_t *staging = (volatile uint32_t *)KERNEL_STAGING_BASE;
                     uint32_t count = task.num_elements;
                     if (count > 1024) count = 1024;
@@ -183,7 +183,7 @@ int main(void) {
                         iram[k] = 0xFF000000; // Pad remaining with EXIT
                     }
                     uart_print("[Main] Loaded Dynamic Kernel into I-RAM.\n");
-                } else if (task.opcode == 1) { // VGPU_OPCODE_LAUNCH_KERNEL
+                } else if (task.opcode == 1) { // fpgagpu_OPCODE_LAUNCH_KERNEL
 
                     // Dispatch Grid & Block Dimensions to Hardware Warp Scheduler
                     REG_GRID_DIM_X  = task.grid_dim_x;
@@ -241,7 +241,7 @@ int main(void) {
             /*
              * Write back to BRAM Ring Buffer
              * This tells the Host CPU that we have finished the task.
-             * The Host CPU's VGPU_IOC_DOORBELL loop is polling this value!
+             * The Host CPU's fpgagpu_IOC_DOORBELL loop is polling this value!
              */
             ring->head = local_head;
         } else {
