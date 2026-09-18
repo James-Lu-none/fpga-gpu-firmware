@@ -51,6 +51,14 @@ typedef fpgagpu_dispatch_packet_t cuda_task_descriptor_t; // Legacy alias
 #define REG_DEBUG_LSU        (*(volatile uint32_t*)(GPU_REGS_BASE + 0x40))
 #define REG_DEBUG_LSU_ADDR   (*(volatile uint32_t*)(GPU_REGS_BASE + 0x44))
 #define REG_DEBUG_L1_L2      (*(volatile uint32_t*)(GPU_REGS_BASE + 0x48))
+#define REG_DEBUG_WARP_STATES (*(volatile uint32_t*)(GPU_REGS_BASE + 0x50))
+// Extended LSU snapshot at 0x4C:
+// [31:28] FIFO count, [27:25] FIFO read pointer,
+// [24:22] FIFO write pointer, [21:19] active warp,
+// [18:7] active PC, [6] lane1 pending, [5] uniform,
+// [4] load, [3] L1 response, [2] L1 request,
+// [1] L1 ready, [0] LSU context write-back.
+#define REG_DEBUG_LSU_STATE  (*(volatile uint32_t*)(GPU_REGS_BASE + 0x4C))
 #endif
 
 // UART Helper Functions
@@ -212,12 +220,16 @@ int main(void) {
                             uart_print_hex(REG_DEBUG_WARP);
                             uart_print(" WEX:0x");
                             uart_print_hex(REG_DEBUG_WARP_EXTRA);
+                            uart_print(" WS:0x");
+                            uart_print_hex(REG_DEBUG_WARP_STATES);
                             uart_print(" LSU:0x");
                             uart_print_hex(REG_DEBUG_LSU);
                             uart_print(" ADDR:0x");
                             uart_print_hex(REG_DEBUG_LSU_ADDR);
                             uart_print(" L1L2:0x");
                             uart_print_hex(REG_DEBUG_L1_L2);
+                            uart_print(" LSUST:0x");
+                            uart_print_hex(REG_DEBUG_LSU_STATE);
                             uart_print("\n");
                             wait_loop = 0;
                         }
