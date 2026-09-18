@@ -3,6 +3,7 @@
 #define KERNEL_STAGING_BASE 0x00010000UL // Dynamic Kernel Staging Buffer (16KB)
 #define RING_BUFFER_BASE    0x00018000UL
 #define IRQ_BASE            0x00020000UL // mapped to ctrl_axi
+#define HOST_IRQ_NOTIFY     (*(volatile uint32_t*)(IRQ_BASE + 0x08))
 #define GPU_REGS_BASE       0x10000000UL // AXI-Lite GPU Hardware Engine
 #define GPU_IRAM_BASE       0x10001000UL // GPU Instruction RAM (4KB)
 #define UART_BASE           0x20000000UL // Simple AXI-Lite UART
@@ -129,10 +130,28 @@ void *memcpy(void *dest, const void *src, unsigned int n) {
     return dest;
 }
 
+// IRQ sources share PicoRV32 irq[0]: a host command doorbell and the GPC
+// completion level. The ISR only records/acknowledges events; command and
+// kernel execution remain in main context.
+static volatile uint32_t gpu_completion_seen;
+
+static inline void wait_for_interrupt(void) {
+    // PicoRV32 waitirq x0 custom instruction. The IRQ handler sets the event
+    // flags before returning, so an event that arrives just before this call
+    // is caught by the surrounding flag check.
+    __asm__ volatile (".word 0x0800400b" ::: "memory");
+}
+
 void irq_handler(void) {
-    volatile uint32_t *irq = (volatile uint32_t*)IRQ_BASE;
-    *irq &= ~(1 << 0);
-    uart_print("[IRQ] Interrupt Received.\n");
+    if (REG_INT_STATUS & 1u) {
+        gpu_completion_seen = 1;
+        REG_INT_ACK = 1;
+    }
+    
+    // Clear the host command-doorbell level. It is harmless for a GPC-only
+    // completion IRQ and prevents an immediate re-entry after retirq.
+    *(volatile uint32_t*)IRQ_BASE = 0;
+    uart_print("[IRQ] Interrupt handled.\n");
 }
 
 typedef struct {
@@ -146,7 +165,7 @@ int main(void) {
     // 1. Initialize SiI9134 HDMI Display Chip Configuration
     // init_hdmi_sii9134(); // [WARNING] 0x50000000 is not mapped in AXI Crossbar yet! This will cause a Bus Error (DECERR) and trap the CPU!
 
-    uart_print("\nHello from RISC-V (Non-Blocking Ring Buffer Mode)\n");
+    uart_print("\nHello from RISC-V\n");
 
     /*
      * Asynchronous Ring Buffer (Command Queue)
@@ -164,106 +183,63 @@ int main(void) {
     }
     uart_print("[Main] Initialized GPU I-RAM.\n");
 
-    // 3. Command Processor Main Polling Loop
+    // 3. Interrupt-driven command processor. The host raises irq[0] only
+    // after writing a complete descriptor and advancing ring->tail.
     while (1) {
-        uint32_t head = ring->head;
-        uint32_t tail = ring->tail;
-
-        // If Host reset the queue (e.g. driver reloaded or queue reset), resynchronize
-        if (head == 0 && tail == 0 && local_head != 0) {
-            local_head = 0;
+        while (local_head == ring->tail) {
+            wait_for_interrupt();
         }
 
-        // Check if there are new tasks from the Host
-        if (local_head != tail) {
-            cuda_task_descriptor_t task = ring->cmds[local_head];
+        cuda_task_descriptor_t task = ring->cmds[local_head];
 
-            if (task.magic == FPGAGPU_MAGIC_OCL) {
-                
-                if (task.opcode == 0x10) { // fpgagpu_OPCODE_LOAD_KERNEL
-                    volatile uint32_t *staging = (volatile uint32_t *)KERNEL_STAGING_BASE;
-                    uint32_t count = task.num_elements;
-                    if (count > 1024) count = 1024;
-                    for (uint32_t k = 0; k < count; k++) {
-                        iram[k] = staging[k];
-                    }
-                    for (uint32_t k = count; k < 1024; k++) {
-                        iram[k] = 0xFF000000; // Pad remaining with EXIT
-                    }
-                    uart_print("[Main] Loaded Dynamic Kernel into I-RAM.\n");
-                } else if (task.opcode == 1) { // fpgagpu_OPCODE_LAUNCH_KERNEL
-
-                    // Dispatch Grid & Block Dimensions to Hardware Warp Scheduler
-                    REG_GRID_DIM_X  = task.grid_dim_x;
-                    REG_GRID_DIM_Y  = task.grid_dim_y;
-                    REG_BLOCK_DIM_X = task.block_dim_x;
-                    REG_BLOCK_DIM_Y = task.block_dim_y;
-                    REG_SRC_ADDR    = (uint32_t)task.dma_src_addr;
-                    REG_DST_ADDR    = (uint32_t)task.dma_dst_addr;
-
-                    uart_print("[Main] Dispatched Task!\n");
-
-                    // Trigger Hardware Warp Launch Doorbell
-                    REG_DOORBELL = 1;
-
-                    // Wait for GPU Compute to Finish
-                    uint32_t wait_loop = 0;
-                    while (REG_INT_STATUS == 0) {
-                        wait_loop++;
-#ifdef ENABLE_GPU_DEBUG
-                        if (wait_loop >= 1000000) {
-                            uart_print("[GPU_DBG] TBS:0x");
-                            uart_print_hex(REG_DEBUG_TBS);
-                            uart_print(" SM:0x");
-                            uart_print_hex(REG_DEBUG_SM);
-                            uart_print(" W01:0x");
-                            uart_print_hex(REG_DEBUG_WARP);
-                            uart_print(" WEX:0x");
-                            uart_print_hex(REG_DEBUG_WARP_EXTRA);
-                            uart_print(" WS:0x");
-                            uart_print_hex(REG_DEBUG_WARP_STATES);
-                            uart_print(" LSU:0x");
-                            uart_print_hex(REG_DEBUG_LSU);
-                            uart_print(" ADDR:0x");
-                            uart_print_hex(REG_DEBUG_LSU_ADDR);
-                            uart_print(" L1L2:0x");
-                            uart_print_hex(REG_DEBUG_L1_L2);
-                            uart_print(" LSUST:0x");
-                            uart_print_hex(REG_DEBUG_LSU_STATE);
-                            uart_print("\n");
-                            wait_loop = 0;
-                        }
-#else
-                        if (wait_loop >= 2000000) {
-                            uart_print("[Main] Waiting for GPU REG_INT_STATUS...\n");
-                            wait_loop = 0;
-                        }
-#endif
-                    }
-
-                    // Acknowledge the GPU internal interrupt
-                    REG_INT_ACK = 1;
-                    uart_print("[Main] GPU Task Complete.\n");
-                }
-            }
-
-            // Move head forward to consume the task
-            local_head = (local_head + 1) % QUEUE_SIZE;
+        if (task.magic == FPGAGPU_MAGIC_OCL) {
             
-            /*
-             * Write back to BRAM Ring Buffer
-             * This tells the Host CPU that we have finished the task.
-             * The Host CPU's fpgagpu_IOC_DOORBELL loop is polling this value!
-             */
-            ring->head = local_head;
-        } else {
-            // No new tasks, print heartbeat without blocking the polling loop
-            static uint32_t idle_cnt = 0;
-            if (++idle_cnt >= 2000000) {
-                uart_print("[Main] RISC-V Heartbeat\n");
-                idle_cnt = 0;
+            if (task.opcode == 0x10) { // fpgagpu_OPCODE_LOAD_KERNEL
+                volatile uint32_t *staging = (volatile uint32_t *)KERNEL_STAGING_BASE;
+                uint32_t count = task.num_elements;
+                if (count > 1024) count = 1024;
+                for (uint32_t k = 0; k < count; k++) {
+                    iram[k] = staging[k];
+                }
+                for (uint32_t k = count; k < 1024; k++) {
+                    iram[k] = 0xFF000000; // Pad remaining with EXIT
+                }
+                uart_print("[Main] Loaded Dynamic Kernel into I-RAM.\n");
+            } else if (task.opcode == 1) { // fpgagpu_OPCODE_LAUNCH_KERNEL
+
+                // Dispatch Grid & Block Dimensions to Hardware Warp Scheduler
+                REG_GRID_DIM_X  = task.grid_dim_x;
+                REG_GRID_DIM_Y  = task.grid_dim_y;
+                REG_BLOCK_DIM_X = task.block_dim_x;
+                REG_BLOCK_DIM_Y = task.block_dim_y;
+                REG_SRC_ADDR    = (uint32_t)task.dma_src_addr;
+                REG_DST_ADDR    = (uint32_t)task.dma_dst_addr;
+
+                uart_print("[Main] Dispatched Task!\n");
+
+                // gpu_completion_seen is set and REG_INT_ACK is issued by
+                // irq_handler when the GPC completion level raises irq[0].
+                // Clear it before ringing the GPU so a very short kernel
+                // completion cannot race with this store.
+                gpu_completion_seen = 0;
+
+                // Trigger Hardware Warp Launch Doorbell
+                REG_DOORBELL = 1;
+                while (!gpu_completion_seen) {
+                    wait_for_interrupt();
+                }
+                uart_print("[Main] GPU Task Complete.\n");
             }
         }
+
+        // Move head forward to consume the task
+        local_head = (local_head + 1) % QUEUE_SIZE;
+        
+        // Commit completion before notifying the host. The PCIe IRQ is
+        // therefore never observed before ring->head has advanced.
+        ring->head = local_head;
+        __asm__ volatile ("fence iorw, iorw" ::: "memory");
+        HOST_IRQ_NOTIFY = 1;
     }
 
     return 0;
