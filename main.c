@@ -44,22 +44,28 @@ typedef fpgagpu_dispatch_packet_t cuda_task_descriptor_t; // Legacy alias
 // Set ENABLE_GPU_DEBUG to 1 to enable detailed GPU telemetry over UART
 #define ENABLE_GPU_DEBUG 1
 
-#ifdef ENABLE_GPU_DEBUG
-#define REG_DEBUG_TBS        (*(volatile uint32_t*)(GPU_REGS_BASE + 0x30))
-#define REG_DEBUG_SM         (*(volatile uint32_t*)(GPU_REGS_BASE + 0x34))
-#define REG_DEBUG_WARP       (*(volatile uint32_t*)(GPU_REGS_BASE + 0x38))
-#define REG_DEBUG_WARP_EXTRA (*(volatile uint32_t*)(GPU_REGS_BASE + 0x3C))
-#define REG_DEBUG_LSU        (*(volatile uint32_t*)(GPU_REGS_BASE + 0x40))
-#define REG_DEBUG_LSU_ADDR   (*(volatile uint32_t*)(GPU_REGS_BASE + 0x44))
-#define REG_DEBUG_L1_L2      (*(volatile uint32_t*)(GPU_REGS_BASE + 0x48))
-#define REG_DEBUG_WARP_STATES (*(volatile uint32_t*)(GPU_REGS_BASE + 0x50))
-// Extended LSU snapshot at 0x4C:
-// [31:28] FIFO count, [27:25] FIFO read pointer,
-// [24:22] FIFO write pointer, [21:19] active warp,
-// [18:7] active PC, [6] lane1 pending, [5] uniform,
-// [4] load, [3] L1 response, [2] L1 request,
-// [1] L1 ready, [0] LSU context write-back.
-#define REG_DEBUG_LSU_STATE  (*(volatile uint32_t*)(GPU_REGS_BASE + 0x4C))
+#if ENABLE_GPU_DEBUG
+// GPC-wide per-launch counters remain readable after completion and INT_ACK.
+#define REG_PERF_CLEAR (*(volatile uint32_t*)(GPU_REGS_BASE + 0x2C))
+#define REG_PERF_CYCLE (*(volatile uint32_t*)(GPU_REGS_BASE + 0x30))
+#define REG_PERF_INST_RETIRED (*(volatile uint32_t*)(GPU_REGS_BASE + 0x34))
+#define REG_PERF_WARP_ISSUE (*(volatile uint32_t*)(GPU_REGS_BASE + 0x38))
+#define REG_PERF_WARP_SWAP (*(volatile uint32_t*)(GPU_REGS_BASE + 0x3C))
+#define REG_PERF_L1_REQ (*(volatile uint32_t*)(GPU_REGS_BASE + 0x40))
+#define REG_PERF_L1_HIT (*(volatile uint32_t*)(GPU_REGS_BASE + 0x44))
+#define REG_PERF_L1_MISS (*(volatile uint32_t*)(GPU_REGS_BASE + 0x48))
+#define REG_PERF_L2_REQ (*(volatile uint32_t*)(GPU_REGS_BASE + 0x4C))
+#define REG_PERF_L2_HIT (*(volatile uint32_t*)(GPU_REGS_BASE + 0x50))
+#define REG_PERF_L2_MISS (*(volatile uint32_t*)(GPU_REGS_BASE + 0x54))
+#define REG_PERF_LSU_FIFO_PUSH (*(volatile uint32_t*)(GPU_REGS_BASE + 0x58))
+#define REG_PERF_LSU_FIFO_POP (*(volatile uint32_t*)(GPU_REGS_BASE + 0x5C))
+#define REG_PERF_SIMT_STACK_PUSH (*(volatile uint32_t*)(GPU_REGS_BASE + 0x60))
+#define REG_PERF_SIMT_STACK_POP (*(volatile uint32_t*)(GPU_REGS_BASE + 0x64))
+#define REG_PERF_LSU_WAIT_CYCLES (*(volatile uint32_t*)(GPU_REGS_BASE + 0x68))
+#define REG_PERF_LSU_FIFO_FULL_CYCLES (*(volatile uint32_t*)(GPU_REGS_BASE + 0x6C))
+#define REG_PERF_AXI_READ_STALL_CYCLES (*(volatile uint32_t*)(GPU_REGS_BASE + 0x70))
+#define REG_PERF_AXI_WRITE_STALL_CYCLES (*(volatile uint32_t*)(GPU_REGS_BASE + 0x74))
+#define REG_PERF_WARP_DONE (*(volatile uint32_t*)(GPU_REGS_BASE + 0x78))
 #endif
 
 // UART Helper Functions
