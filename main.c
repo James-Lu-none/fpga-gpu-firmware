@@ -96,6 +96,29 @@ void uart_print_hex(uint32_t val) {
     }
 }
 
+#if ENABLE_GPU_DEBUG
+static void print_gpu_register(const char *name, uint32_t value) {
+    uart_print(name);
+    uart_print_hex(value);
+    uart_print("\n");
+}
+
+static void print_gpu_counters(void) {
+    print_gpu_register("[GPU] cycles=0x", REG_PERF_CYCLE);
+    print_gpu_register("[GPU] instructions_retired=0x", REG_PERF_INST_RETIRED);
+    print_gpu_register("[GPU] warp_issue=0x", REG_PERF_WARP_ISSUE);
+    print_gpu_register("[GPU] warp_done=0x", REG_PERF_WARP_DONE);
+    print_gpu_register("[GPU] l1_requests=0x", REG_PERF_L1_REQ);
+    print_gpu_register("[GPU] l1_misses=0x", REG_PERF_L1_MISS);
+    print_gpu_register("[GPU] l2_requests=0x", REG_PERF_L2_REQ);
+    print_gpu_register("[GPU] l2_misses=0x", REG_PERF_L2_MISS);
+    print_gpu_register("[GPU] lsu_push=0x", REG_PERF_LSU_FIFO_PUSH);
+    print_gpu_register("[GPU] lsu_pop=0x", REG_PERF_LSU_FIFO_POP);
+    print_gpu_register("[GPU] axi_read_stalls=0x", REG_PERF_AXI_READ_STALL_CYCLES);
+    print_gpu_register("[GPU] axi_write_stalls=0x", REG_PERF_AXI_WRITE_STALL_CYCLES);
+}
+#endif
+
 // Simple Delay Loop (~1ms per count at 125MHz)
 void delay_ms(uint32_t count) {
     while (count--) {
@@ -204,6 +227,12 @@ int main(void) {
                 volatile uint32_t *staging = (volatile uint32_t *)KERNEL_STAGING_BASE;
                 uint32_t count = task.num_elements;
                 if (count > 1024) count = 1024;
+#if ENABLE_GPU_DEBUG
+                print_gpu_register("[Kernel] instruction_count=0x", count);
+                for (uint32_t k = 0; k < count && k < 8; k++) {
+                    print_gpu_register("[Kernel] staging_word=0x", staging[k]);
+                }
+#endif
                 for (uint32_t k = 0; k < count; k++) {
                     iram[k] = staging[k];
                 }
@@ -221,6 +250,14 @@ int main(void) {
                 REG_SRC_ADDR    = (uint32_t)task.dma_src_addr;
                 REG_DST_ADDR    = (uint32_t)task.dma_dst_addr;
 
+#if ENABLE_GPU_DEBUG
+                print_gpu_register("[Launch] grid_x=0x", REG_GRID_DIM_X);
+                print_gpu_register("[Launch] grid_y=0x", REG_GRID_DIM_Y);
+                print_gpu_register("[Launch] block_x=0x", REG_BLOCK_DIM_X);
+                print_gpu_register("[Launch] block_y=0x", REG_BLOCK_DIM_Y);
+                print_gpu_register("[Launch] kernarg_base=0x", REG_SRC_ADDR);
+#endif
+
                 uart_print("[Main] Dispatched Task!\n");
 
                 // gpu_completion_seen is set and REG_INT_ACK is issued by
@@ -235,6 +272,9 @@ int main(void) {
                     wait_for_interrupt();
                 }
                 uart_print("[Main] GPU Task Complete.\n");
+#if ENABLE_GPU_DEBUG
+                print_gpu_counters();
+#endif
             }
         }
 
