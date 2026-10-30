@@ -116,6 +116,15 @@ static void print_gpu_counters(void) {
     print_gpu_register("[GPU] lsu_pop=0x", REG_PERF_LSU_FIFO_POP);
     print_gpu_register("[GPU] axi_read_stalls=0x", REG_PERF_AXI_READ_STALL_CYCLES);
     print_gpu_register("[GPU] axi_write_stalls=0x", REG_PERF_AXI_WRITE_STALL_CYCLES);
+    print_gpu_register("[AXI] first_seen_flags=0x", *(volatile uint32_t*)(GPU_REGS_BASE + 0x80));
+    print_gpu_register("[AXI] first_read_addr=0x", *(volatile uint32_t*)(GPU_REGS_BASE + 0x84));
+    for (uint32_t i = 0; i < 8; i++) {
+        print_gpu_register("[AXI] first_read_word=0x", *(volatile uint32_t*)(GPU_REGS_BASE + 0x88 + i*4));
+    }
+    print_gpu_register("[AXI] first_write_addr=0x", *(volatile uint32_t*)(GPU_REGS_BASE + 0xA8));
+    print_gpu_register("[AXI] first_write_strobe=0x", *(volatile uint32_t*)(GPU_REGS_BASE + 0xAC));
+    print_gpu_register("[AXI] first_write_low=0x", *(volatile uint32_t*)(GPU_REGS_BASE + 0xB0));
+    print_gpu_register("[AXI] first_write_high=0x", *(volatile uint32_t*)(GPU_REGS_BASE + 0xB4));
 }
 #endif
 
