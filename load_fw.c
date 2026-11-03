@@ -13,7 +13,12 @@
 #define CTRL_REG_CPU_RESET_OFFSET (CTRL_REG_BASE + 0x04)
 
 int main(int argc, char **argv) {
+    if (argc > 2) {
+        fprintf(stderr, "Usage: %s [PCIe resource0 path]\n", argv[0]);
+        return 1;
+    }
     const char *fw_path = "firmware.bin";
+    const char *resource_path = argc == 2 ? argv[1] : "/dev/mem";
     uint32_t bar0_addr = 0xa0a00000; // BAR0 Physical Address
 
     // 1. Read firmware.bin
@@ -49,18 +54,19 @@ int main(int argc, char **argv) {
     fclose(f);
 
     printf("Loaded %s (%ld bytes).\n", fw_path, fw_size);
-    printf("Preparing to write to FPGA BRAM at Physical Address: 0x%08X...\n", bar0_addr);
+    printf("Preparing to write FPGA BRAM through %s at offset 0x%08X...\n",
+           resource_path, argc == 2 ? 0 : bar0_addr);
 
     // 2. Map PCIe BAR0 via /dev/mem
-    int mem_fd = open("/dev/mem", O_RDWR | O_SYNC);
+    int mem_fd = open(resource_path, O_RDWR | O_SYNC);
     if (mem_fd < 0) {
-        perror("open /dev/mem failed (did you forget sudo?)");
+        perror("open PCIe resource failed (did you forget sudo?)");
         free(fw_buf);
         return 1;
     }
 
     size_t map_size = 0x30000; // 192KB PCIe BAR size to cover BRAM (128KB) and Ctrl Regs (0x20000)
-    off_t target = bar0_addr;
+    off_t target = argc == 2 ? 0 : bar0_addr;
     size_t page_size = sysconf(_SC_PAGE_SIZE);
     void *map_base = mmap(0, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, mem_fd, target & ~(page_size - 1));
     if (map_base == (void *) -1) {
@@ -78,6 +84,10 @@ int main(int argc, char **argv) {
     __asm__ volatile("mfence" ::: "memory");
     if (*cpu_reset_reg != 0) {
         printf("Error: Failed to assert CPU soft reset! Read back: %d\n", *cpu_reset_reg);
+        munmap(map_base, map_size);
+        close(mem_fd);
+        free(fw_buf);
+        return 1;
     }
     printf("Asserted CPU soft reset.\n");
     sleep(1);
@@ -143,6 +153,7 @@ int main(int argc, char **argv) {
         __asm__ volatile("mfence" ::: "memory");
         if (*cpu_reset_reg != 1) {
             printf("Error: Failed to release CPU soft reset! Read back: %d\n", *cpu_reset_reg);
+            mismatch++;
         }
         printf("CPU soft reset released. Firmware is booting...\n");
         sleep(1);
@@ -167,6 +178,7 @@ int main(int argc, char **argv) {
             
             if (timeout == 0) {
                 printf("TIMEOUT! CPU did not respond to IRQ %d.\n", i);
+                mismatch++;
                 break;
             } else {
                 printf("SUCCESS! CPU received IRQ and cleared the flag!\n");
